@@ -27,7 +27,7 @@ BEGIN{
 		MSG="Missing `-v T=$OSTYPE` when calling awk."
 		printf("ERROR: %s\n", MSG) > "/dev/stderr"
 
-		# <-- Avoids `END` still being processed.
+		# Avoids `END` still being processed.
 		EXIT_AWK=1
 
 		exit 1
