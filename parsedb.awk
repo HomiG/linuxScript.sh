@@ -1,13 +1,13 @@
 #!/bin/awk
 
 #----------------------------------------------------------------------------------
-# Project Name      - parseawk.awk
+# Project Name      - parsedb.awk
 # Started On        - Thu 14 Nov 17:08:25 GMT 2019
-# Last Change       - Thu 14 Nov 18:18:16 GMT 2019
+# Last Change       - Thu 14 Nov 19:11:57 GMT 2019
 # Author E-Mail     - terminalforlife@yahoo.com
 # Author GitHub     - https://github.com/terminalforlife
 #----------------------------------------------------------------------------------
-# Usage: awk -v T="$OSTYPE" C=$column_mode -f parseawk.awk dataSet.dat
+# Usage: awk -v T="$(uname -s)" C=$column_mode -f parseawk.awk dataSet.dat
 #
 # Where C is equal to either `1`, `2`, `3`, etc.
 #
@@ -26,7 +26,7 @@
 
 BEGIN{
 	if(! T){
-		MSG="Missing `-v T=$OSTYPE` when calling awk."
+		MSG="Missing `-v T=$(uname -s)` when calling awk."
 		printf("ERROR: %s\n", MSG) > "/dev/stderr"
 		DO_EXIT++
 	}else if(! C){
@@ -68,12 +68,15 @@ END{
 	if(EXIT_AWK != 1){
 		printf("%-20s %-s\n", "COLUMN", "TOTAL")
 
-		# Iterate over each index in the X associative array variable, where I is
-		# equal to the name of the field in the database. T requires `-v T=$OSTYPE`
-		# be used, when calling for awk on a terminal.
+		# Iterate over each index in the X associative array variable,
+		# where I is equal to the name of the field in the database. T
+		# requires `-v T=$(uname -s)` be used, when calling for awk on a
+		# terminal.
 		for(I in X){
-			# Remove suffixed `^M` if on Linux. (we use `\n`)
-			if(/$/&&T~/^linux-gnu$/){
+			# Remove suffixed `^M` if on Linux. (we use `\n`) The ninth
+			# field (at the end thereof) must have the ^M character, -
+			# in order for the first condition set to be successful.
+			if(C==9 && T~/^[lL]inux$/){
 				A=substr(I, 0, length(I)-1)
 				output(A)
 			}else{
