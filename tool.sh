@@ -1,5 +1,8 @@
 #!/bin/bash
 
+#TODO: Add ability to compare IDs ($1) from one file to another.
+#TODO: Add more verbose help output, showing the many options.
+
 PARSEDB='parsedb.awk'
 
 FAIL(){
@@ -7,14 +10,12 @@ FAIL(){
 	[ $1 -eq 1 ] && exit 1
 }
 
-SHOWALL="false"
-
 while [ "$1" ]; do
 	case $1 in
 		-h|--help|-\?)
 			printf "SYNTAX: ${0##*/} [OPTS] FILE\n"
 			exit 0 ;;
-		-va|--show-all)
+		-a|--show-all)
 			SHOWALL="true" ;;
 		-f|--first-names)
 			COLNUM=3 ;;
@@ -24,6 +25,16 @@ while [ "$1" ]; do
 			COLNUM=9 ;;
 		-b|--browser)
 			COLNUM=8 ;;
+		-ds|--dob-since)
+			shift
+			BS_DATE=$1
+			BIRTH_SINCE="true" ;;
+		-du|--dob-until)
+			shift
+			BU_DATE=$1
+			BIRTH_UNTIL="true" ;;
+		--reverse|-R)
+			REV='-r' ;;
 		-E)
 			# Not sure what the point in this is:
 			printf "1054429-1054406\n"
@@ -36,8 +47,19 @@ while [ "$1" ]; do
 	shift
 done
 
+if [ "$REV" == '-r' ] && ! [ "$BIRTH_SINCE" == 'true' -o "$BIRTH_UNTIL" == 'true' ]; then
+	FAIL 1 "$LINENO" "Option '-R|--reverse' applies only to DOB filtering."
+fi
+
+if [ -n "$BIRTH_SINCE" -o -n "$BIRTH_UNTIL" ]; then
+	if ! [[ $BS_DATE =~ [0-9]+-[0-9]+-[0-9]+$ ]]\
+	&& ! [[ $BU_DATE =~ [0-9]+-[0-9]+-[0-9]+$ ]]; then
+		FAIL 1 "$LINENO" "Filtering by DOB requires a 'YYYY-MM-DD' date."
+	fi
+fi
+
 declare -i DEPCOUNT=0
-for DEP in awk uname; {
+for DEP in awk uname sort; {
 	if ! type -fP "$DEP" > /dev/null 2>&1; then
 		FAIL 0 "$LINENO" "Dependency '$DEP' not met."
 		DEPCOUNT+=1
@@ -46,180 +68,36 @@ for DEP in awk uname; {
 
 [ $DEPCOUNT -eq 0 ] || exit 1
 
+OS=`uname -s`
+
 if ! { [ -f "$*" ] && [ -r "$*" ]; }; then
 	FAIL 1 $LINENO "Input file missing or inaccessible."
 else
 	FILENAME=$*
 fi
 
-if [ "$SHOWALL" == 'true' ]; then
-	# Skips the lines beginning with '#' (comment).
-	awk -F "|" '!/^#/' "$1"
-	exit $?
-elif [ -n $COLNUM ]; then
+PARSE(){
 	if [ -f "$PARSEDB" ] && [ -r "$PARSEDB" ]; then
 		# Must be executed in the same directory as the files.
-		awk -v T="$(uname -s)" -v C=$COLNUM -f "$PARSEDB" "$FILENAME"
+		awk -v T="$OS" -v C=$1 -v OPT=$2 -f "$PARSEDB" "$FILENAME"
+		return $?
 	else
 		FAIL 1 $LINENO "File '$PARSEDB' missing or inaccessible."
 	fi
-fi
+}
 
-#----------------------------------------------------------------------------------
-#	3)
-#		shift
-#		case $1 in
-#			-f)
-#				FILENAME=$1
-#				let --offset ;;
-#		esac
-#	4)
-#		# Variable used to determine desired argument's <> position.
-#		offset=2
-#
-#		# Determines which awk will be executed.
-#		bornMode=0
-#
-#		while [ $# -gt 0 ]
-#		do
-#			case $1 in
-#				-f)
-#					# Filename variable gets the content of the
-#					# offset argument.
-#					FILENAME=${!offset} ;;
-#				-id)
-#					id=${!offset} ;;
-#				--born-until)
-#					date=${!offset}
-#					printf -v date "%d" "${date//-}"
-#					bornMode=1 ;;
-#				--born-since)
-#					date=${!offset}
-#					# Echo born $position and $# and $date.
-#
-#					# Ensure integer, by globally removing '-'.
-#					printf -v date "%d" "${date//-}"
-#					bornMode=2 ;;
-#			esac
-#			shift
-#		done
-#
-#		case $bornMode in
-#		0) # Runs Search with ID
-#			# The -v flag declares a variable to be used internally.
-#			# Also --> $1 ~ "^"pat"$" <-- means that.
-#			awk -F "|" -v pat="$id" '
-#				$1 ~ "^"pat"$"{print $2 " " $3 " " $5}
-#			' $FILENAME ;;
-#
-#		# The search is ONLY on the ID field ($1) searching for the EXACT
-#		# pattern (^ &).
-#		1) # Runs born until
-#			# Creates a temporary file containing IDs matching the
-#			# --born-until condition.
-#			awk -F "|" '/#/ {next} {print $1 " " $5}' $FILENAME\
-#				| tr -d '-'\
-#				| awk '$2<='"$date"'{print $1}' > ids.tmp
-#
-#			# Finds and prints the lines from the input file whose id's
-#			# are the same with the ids.temp, -w for identical strings.
-#			grep -w -f ids.tmp $FILENAME
-#
-#			# Remove the temporary file.
-#			rm ids.tmp ;;
-#
-#			# The temp file is created so the dates will have the
-#			# "right" format Y-m-d, otherwise the Y m d would not be
-#			# separated with `-`, according to this implementation.
-#		2) # Runs born since
-#			# Creates a "temporary" file containing IDs matching the
-#			# --born-since condition.
-#			awk -F "|" '/#/ {next} {print $1 " " $5}' $FILENAME\
-#				| tr -d '-'\
-#				| awk '$2>='"$date"'{print $1}' > ids.tmp
-#
-#			# Finds and prints the lines from the input file whose IDs
-#			# are the same with the `ids.temp`.
-#			grep -w -f ids.tmp $FILENAME
-#
-#			# Remove the temporary file.
-#			rm ids.tmp ;;
-#		esac ;;
-#	6)
-#		offset=2
-#		while [ $# -gt 0 ]
-#		do
-#			case $1 in
-#				-f)
-#					# Filename variable gets the content of the
-#					# #offset argument.
-#					FILENAME=${!offset} ;;
-#				--born-since)
-#					dateA=${!offset}
-#
-#					# Delete the `-` from the date parsed in
-#					# the arguments, so the date will be
-#					# treated as an int e.g. '1980-21-30' will
-#					# be '19802130'.
-#					printf -v dateA "%d" "${dateA//-}"
-#
-#					mode=0 ;;
-#				--born-until)
-#					dateB=${!offset}
-#
-#					# Delete the `-` from the date parsed in
-#					# the arguments, so the date will be
-#					# treated as an int e.g. '1980-21-30' will
-#					# be '19802130'.
-#					printf -v dateB "%d" "${dateB//-}" ;;
-#				--edit)
-#					id=${!offset}
-#					offset=$((offset+1))
-#					column=${!offset}
-#					offset=$((offset+1))
-#					value=${!offset}
-#					offset=$((offset-2))
-#					mode=1 ;;
-#				esac
-#				shift
-#		done
-#
-#		case $mode in
-#			0)
-#				awk -F "|" '/#/ {next} {print $1 " " $5}' $FILENAME\
-#					| sed 's/-//g'\
-#					| awk '$2>='"$dateA"' && $2<='"$dateB"'{print $1}' > ids.tmp
-#
-#				# Finds and prints the lines from the input file
-#				# containing IDs the same as in the `ids.temp`.
-#				grep -w -f ids.tmp $FILENAME
-#
-#				# Remove the temporary file.
-#				rm ids.tmp ;;
-#			1)
-#				if [ $column -gt 1 ] && [ $column -lt 9 ]
-#				then
-#					# Search for the ID, set Output Field
-#					# Seperator to `|`, then replace the value
-#					# at the column given in the arguments.
-#					awk  -F "|" -v pat="$id" '
-#						BEGIN{OFS="|"}
-#						$1 ~ "^"pat"$"
-#						{
-#							$'"$column"' = "'"$value"'"
-#						}1
-#					' "$FILENAME"
-#
-#				# To save the change we made we can create a new
-#				# file with the "changes", like:
-#				#
-#				#   awk  -F "|" -v pat="$id" '
-#				#   	BEGIN{OFS="|"}
-#				#   	$1 ~ "^"pat"$"
-#				#   	{
-#				#   		$'"$column"' = "'"$value"'"
-#				#   	}1
-#				#   ' > newFile.tmp
-#				fi ;;
-#		esac ;;
-#esac
+BIRTH_SORT(){
+	PARSE 5 "BIRTH_$1-$2" | sort $REV -n -t '|' -k 5
+}
+
+if [ "$SHOWALL" == 'true' ]; then
+	# Skips the lines beginning with '#' (comment).
+	PARSE 0 ALL
+	exit $?
+elif [ ${COLNUM:-0} -ge 1 -a ${COLNUM:-0} -le 9 ]; then
+	PARSE $COLNUM
+elif [ "$BIRTH_SINCE" == "true" ]; then
+	BIRTH_SORT SINCE "${BS_DATE//-}"
+elif [ "$BIRTH_UNTIL" == "true" ]; then
+	BIRTH_SORT UNTIL "${BU_DATE//-}"
+fi
